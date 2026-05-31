@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { UploadCloud, FileText, AlertCircle, X, Loader2, RotateCcw, Receipt, Tag, Calendar, DollarSign, ShoppingCart } from 'lucide-react';
+import { UploadCloud, FileText, AlertCircle, X, Loader2, RotateCcw, Receipt, Tag, Calendar, DollarSign, ShoppingCart, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -99,6 +99,42 @@ export default function Home() {
   const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) applyFile(e.target.files[0]);
   }, [applyFile]);
+
+  function exportToCsv() {
+    if (!extraction) return;
+
+    const escape = (v: string | number | null) => {
+      if (v === null || v === undefined) return '';
+      const str = String(v);
+      return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    };
+
+    const rows: string[] = [
+      'Section,Field,Value',
+      `Metadata,Vendor,${escape(extraction.vendor)}`,
+      `Metadata,Date,${escape(extraction.date)}`,
+      `Metadata,Category,${escape(extraction.category)}`,
+      `Metadata,Currency,${escape(extraction.currency)}`,
+      `Metadata,Total,${escape(extraction.total)}`,
+      '',
+      'Line Items,Item Name,Quantity,Price',
+      ...extraction.items.map(item =>
+        `Line Items,${escape(item.name)},${escape(item.quantity)},${escape(item.price)}`
+      ),
+    ];
+
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const vendorSlug = (extraction.vendor ?? 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    a.href = url;
+    a.download = `receipt-export-${vendorSlug}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function handleAnalyze() {
     if (!selectedFile) return;
@@ -302,9 +338,13 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Re-upload */}
-                <div className="flex justify-center pt-1">
-                  <Button variant="outline" size="sm" onClick={clearAll} data-testid="button-new-receipt" className="gap-2">
+                {/* Actions */}
+                <div className="flex flex-wrap justify-center gap-2 pt-1">
+                  <Button variant="outline" size="sm" onClick={exportToCsv} data-testid="button-export-csv" className="gap-2">
+                    <Download className="w-3.5 h-3.5" />
+                    Export to CSV
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={clearAll} data-testid="button-new-receipt" className="gap-2">
                     <RotateCcw className="w-3.5 h-3.5" />
                     Analyze Another Receipt
                   </Button>
