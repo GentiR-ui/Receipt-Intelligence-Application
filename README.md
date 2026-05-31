@@ -61,6 +61,8 @@ In PowerShell (from `artifacts/api-server`):
 
 ```powershell
 cd artifacts/api-server
+$env:PORT = "3001"
+$env:GEMINI_API_KEY- = "Your Gemini API KEY"
 pnpm run dev
 ```
 
