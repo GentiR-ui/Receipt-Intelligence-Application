@@ -36,3 +36,24 @@ export const UploadReceiptResponse = zod.object({
 })
 
 
+/**
+ * @summary Extract structured data from a receipt image using AI
+ */
+export const ExtractReceiptBody = zod.object({
+  "filename": zod.string()
+})
+
+export const ExtractReceiptResponse = zod.object({
+  "vendor": zod.string().nullable(),
+  "date": zod.string().nullable(),
+  "currency": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "total": zod.number().nullable(),
+  "items": zod.array(zod.object({
+  "name": zod.string().nullable(),
+  "quantity": zod.number().nullable(),
+  "price": zod.number().nullable()
+}))
+})
+
+

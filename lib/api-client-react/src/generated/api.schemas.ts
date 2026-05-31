@@ -44,8 +44,27 @@ export interface ReceiptUploadResult {
   uploadedAt: string;
 }
 
+export interface ReceiptLineItem {
+  name: string | null;
+  quantity: number | null;
+  price: number | null;
+}
+
+export interface ReceiptExtraction {
+  vendor: string | null;
+  date: string | null;
+  currency: string | null;
+  category: string | null;
+  total: number | null;
+  items: ReceiptLineItem[];
+}
+
 export interface ApiError {
   /** Error message */
   error: string;
 }
+
+export type ExtractReceiptBody = {
+  filename: string;
+};
 

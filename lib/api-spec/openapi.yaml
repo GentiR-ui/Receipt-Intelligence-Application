@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: receipts
     description: Receipt operations
+  - name: extract
+    description: Receipt extraction operations
 paths:
   /healthz:
     get:
@@ -45,6 +47,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReceiptUploadResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /extract:
+    post:
+      operationId: extractReceipt
+      tags: [extract]
+      summary: Extract structured data from a receipt image using AI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+              required:
+                - filename
+      responses:
+        "200":
+          description: Extraction successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptExtraction"
         "400":
           description: Bad request
           content:
@@ -108,6 +145,51 @@ components:
         - status
         - message
         - uploadedAt
+    ReceiptLineItem:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+          nullable: true
+        price:
+          type: number
+          nullable: true
+      required:
+        - name
+        - quantity
+        - price
+    ReceiptExtraction:
+      type: object
+      properties:
+        vendor:
+          type: string
+          nullable: true
+        date:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        total:
+          type: number
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptLineItem"
+      required:
+        - vendor
+        - date
+        - currency
+        - category
+        - total
+        - items
     ApiError:
       type: object
       properties:

@@ -21,7 +21,9 @@ import type {
 
 import type {
   ApiError,
+  ExtractReceiptBody,
   HealthStatus,
+  ReceiptExtraction,
   ReceiptUploadInput,
   ReceiptUploadResult
 } from './api.schemas';
@@ -188,5 +190,78 @@ export const useUploadReceipt = <TError = ErrorType<ApiError>,
         TContext
       > => {
       return useMutation(getUploadReceiptMutationOptions(options));
+    }
+
+export const getExtractReceiptUrl = () => {
+
+
+
+
+  return `/api/extract`
+}
+
+/**
+ * @summary Extract structured data from a receipt image using AI
+ */
+export const extractReceipt = async (extractReceiptBody: ExtractReceiptBody, options?: RequestInit): Promise<ReceiptExtraction> => {
+    const formData = new FormData();
+formData.append(`filename`, extractReceiptBody.filename);
+
+  return customFetch<ReceiptExtraction>(getExtractReceiptUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body:
+      formData,
+  }
+);}
+
+
+
+
+export const getExtractReceiptMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractReceipt>>, TError,{data: BodyType<ExtractReceiptBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof extractReceipt>>, TError,{data: BodyType<ExtractReceiptBody>}, TContext> => {
+
+const mutationKey = ['extractReceipt'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractReceipt>>, {data: BodyType<ExtractReceiptBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  extractReceipt(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExtractReceiptMutationResult = NonNullable<Awaited<ReturnType<typeof extractReceipt>>>
+    export type ExtractReceiptMutationBody = BodyType<ExtractReceiptBody>
+    export type ExtractReceiptMutationError = ErrorType<ApiError>
+
+    /**
+ * @summary Extract structured data from a receipt image using AI
+ */
+export const useExtractReceipt = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractReceipt>>, TError,{data: BodyType<ExtractReceiptBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof extractReceipt>>,
+        TError,
+        {data: BodyType<ExtractReceiptBody>},
+        TContext
+      > => {
+      return useMutation(getExtractReceiptMutationOptions(options));
     }
 
