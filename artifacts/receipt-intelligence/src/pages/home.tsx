@@ -2,8 +2,9 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   UploadCloud, FileText, AlertCircle, X, Loader2, RotateCcw,
   Receipt, Tag, Calendar, DollarSign, ShoppingCart, Download,
-  Clock, Trash2, ChevronRight,
+  Clock, Trash2, ChevronRight, Sparkles, AlertTriangle,
 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -20,6 +21,7 @@ interface ReceiptExtraction {
   category: string | null;
   total: number | null;
   items: ReceiptLineItem[];
+  insights: string[];
 }
 
 interface HistoryEntry {
@@ -34,14 +36,17 @@ const MAX_HISTORY = 20;
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_SIZE = 10 * 1024 * 1024;
 
-function loadHistory(): HistoryEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
+const PROCESSING_STEPS = [
+  'Uploading image...',
+  'Analyzing with Gemini Vision...',
+  'Extracting line items...',
+  'Finalizing data...',
+];
 
+function loadHistory(): HistoryEntry[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'); }
+  catch { return []; }
+}
 function saveHistory(entries: HistoryEntry[]) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
 }
@@ -50,9 +55,7 @@ function formatCurrency(amount: number | null, currency: string | null): string 
   if (amount === null) return '—';
   try {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency ?? 'USD',
-      minimumFractionDigits: 2,
+      style: 'currency', currency: currency ?? 'USD', minimumFractionDigits: 2,
     }).format(amount);
   } catch {
     return `${currency ?? ''} ${amount.toFixed(2)}`.trim();
@@ -66,8 +69,7 @@ function formatRelativeTime(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 function MetaField({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | null }) {
@@ -85,26 +87,24 @@ function MetaField({ icon: Icon, label, value }: { icon: React.ElementType; labe
 }
 
 function ExtractionResults({
-  extraction,
-  onExportCsv,
-  onNewReceipt,
-  filename,
+  extraction, filename, onExportCsv, onNewReceipt,
 }: {
   extraction: ReceiptExtraction;
+  filename?: string;
   onExportCsv: () => void;
   onNewReceipt: () => void;
-  filename?: string;
 }) {
   return (
     <div className="space-y-5 animate-in fade-in duration-500" data-testid="extraction-results">
       {filename && (
-        <p className="text-xs text-muted-foreground text-center">
-          <span className="font-medium text-foreground">{filename}</span>
+        <p className="text-xs text-muted-foreground text-center truncate px-2">
+          Results for <span className="font-medium text-foreground">{filename}</span>
         </p>
       )}
 
+      {/* Meta fields */}
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Extracted Data</h3>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Extracted Data</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <MetaField icon={Receipt} label="Vendor" value={extraction.vendor} />
           <MetaField icon={Calendar} label="Date" value={extraction.date} />
@@ -113,8 +113,27 @@ function ExtractionResults({
         </div>
       </div>
 
+      {/* AI Insights */}
+      {extraction.insights && extraction.insights.length > 0 && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4" data-testid="ai-insights">
+          <h3 className="text-xs font-semibold text-primary uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" />
+            AI Insights
+          </h3>
+          <ul className="space-y-1.5">
+            {extraction.insights.map((insight, i) => (
+              <li key={i} className="text-sm text-foreground/80 flex items-start gap-2">
+                <span className="text-primary mt-1 shrink-0">›</span>
+                {insight}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Line items */}
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
           <ShoppingCart className="w-3.5 h-3.5" />
           Line Items
           {extraction.items.length > 0 && (
@@ -123,7 +142,6 @@ function ExtractionResults({
             </span>
           )}
         </h3>
-
         {extraction.items.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
             No line items found on this receipt.
@@ -164,6 +182,7 @@ function ExtractionResults({
         )}
       </div>
 
+      {/* Actions */}
       <div className="flex flex-wrap justify-center gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={onExportCsv} data-testid="button-export-csv" className="gap-2">
           <Download className="w-3.5 h-3.5" />
@@ -181,38 +200,49 @@ function ExtractionResults({
 export default function Home() {
   const [uploadState, setUploadState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [extraction, setExtraction] = useState<ReceiptExtraction | null>(null);
-  const [activeFilename, setActiveFilename] = useState<string>('');
+  const [activeFilename, setActiveFilename] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => { saveHistory(history); }, [history]);
+
+  // Cycling processing log
   useEffect(() => {
-    saveHistory(history);
-  }, [history]);
+    if (uploadState !== 'loading') { setProcessingStep(''); return; }
+    setProcessingStep(PROCESSING_STEPS[0]);
+    const timers = [
+      setTimeout(() => setProcessingStep(PROCESSING_STEPS[1]), 1500),
+      setTimeout(() => setProcessingStep(PROCESSING_STEPS[2]), 3500),
+      setTimeout(() => setProcessingStep(PROCESSING_STEPS[3]), 5500),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [uploadState]);
 
   const applyFile = useCallback((file: File) => {
     if (file.size > MAX_SIZE) {
       setErrorMsg('File must be under 10MB.');
       setUploadState('error');
+      toast({ title: 'File too large', description: 'Maximum file size is 10MB.', variant: 'destructive' });
       return;
     }
     if (!ALLOWED_MIME.includes(file.type)) {
       setErrorMsg('Only JPEG, PNG, WEBP, and PDF files are supported.');
       setUploadState('error');
+      toast({ title: 'Unsupported file type', description: 'Please upload a JPEG, PNG, WEBP, or PDF.', variant: 'destructive' });
       return;
     }
     setSelectedFile(file);
     setErrorMsg(null);
+    setIsDuplicate(false);
     setUploadState('idle');
     setExtraction(null);
-    if (file.type.startsWith('image/')) {
-      setPreviewUrl(URL.createObjectURL(file));
-    } else {
-      setPreviewUrl(null);
-    }
+    setPreviewUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
   }, []);
 
   const clearAll = useCallback(() => {
@@ -221,6 +251,7 @@ export default function Home() {
     setPreviewUrl(null);
     setUploadState('idle');
     setErrorMsg(null);
+    setIsDuplicate(false);
     setExtraction(null);
     setActiveFilename('');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -229,8 +260,7 @@ export default function Home() {
   const onDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
   const onDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
   const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
+    e.preventDefault(); setIsDragging(false);
     if (e.dataTransfer.files?.[0]) applyFile(e.dataTransfer.files[0]);
   }, [applyFile]);
   const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,24 +268,21 @@ export default function Home() {
   }, [applyFile]);
 
   function buildCsv(data: ReceiptExtraction): string {
-    const escape = (v: string | number | null) => {
+    const esc = (v: string | number | null) => {
       if (v === null || v === undefined) return '';
-      const str = String(v);
-      return str.includes(',') || str.includes('"') || str.includes('\n')
-        ? `"${str.replace(/"/g, '""')}"` : str;
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
     return [
       'Section,Field,Value',
-      `Metadata,Vendor,${escape(data.vendor)}`,
-      `Metadata,Date,${escape(data.date)}`,
-      `Metadata,Category,${escape(data.category)}`,
-      `Metadata,Currency,${escape(data.currency)}`,
-      `Metadata,Total,${escape(data.total)}`,
+      `Metadata,Vendor,${esc(data.vendor)}`,
+      `Metadata,Date,${esc(data.date)}`,
+      `Metadata,Category,${esc(data.category)}`,
+      `Metadata,Currency,${esc(data.currency)}`,
+      `Metadata,Total,${esc(data.total)}`,
       '',
       'Line Items,Item Name,Quantity,Price',
-      ...data.items.map(item =>
-        `Line Items,${escape(item.name)},${escape(item.quantity)},${escape(item.price)}`
-      ),
+      ...data.items.map(item => `Line Items,${esc(item.name)},${esc(item.quantity)},${esc(item.price)}`),
     ].join('\n');
   }
 
@@ -273,39 +300,57 @@ export default function Home() {
   function exportToCsv() {
     if (!extraction) return;
     triggerDownload(buildCsv(extraction), extraction.vendor);
+    toast({ title: 'CSV downloaded' });
   }
 
   function exportHistoryEntry(entry: HistoryEntry) {
     triggerDownload(buildCsv(entry.extraction), entry.extraction.vendor);
+    toast({ title: 'CSV downloaded' });
   }
 
   async function handleAnalyze() {
     if (!selectedFile) return;
     setUploadState('loading');
     setErrorMsg(null);
+    setIsDuplicate(false);
+
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
       const res = await fetch('/api/extract', { method: 'POST', body: formData });
+
+      if (res.status === 409) {
+        const err = await res.json().catch(() => ({ error: 'Duplicate detected' }));
+        const msg = err.error ?? 'This receipt appears to have already been processed.';
+        setErrorMsg(msg);
+        setIsDuplicate(true);
+        setUploadState('error');
+        toast({ title: 'Potential Duplicate Detected', description: msg });
+        return;
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(err.error ?? 'Extraction failed');
       }
+
       const data: ReceiptExtraction = await res.json();
       setExtraction(data);
       setActiveFilename(selectedFile.name);
       setUploadState('success');
+      toast({ title: 'Receipt analyzed', description: `Extracted data from ${selectedFile.name}` });
 
-      const entry: HistoryEntry = {
+      setHistory(prev => [{
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         filename: selectedFile.name,
         analyzedAt: new Date().toISOString(),
         extraction: data,
-      };
-      setHistory(prev => [entry, ...prev]);
+      }, ...prev]);
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : 'Extraction failed');
+      const msg = e instanceof Error ? e.message : 'Extraction failed';
+      setErrorMsg(msg);
       setUploadState('error');
+      toast({ title: 'Extraction failed', description: msg, variant: 'destructive' });
     }
   }
 
@@ -320,10 +365,6 @@ export default function Home() {
   function deleteHistoryEntry(id: string, e: React.MouseEvent) {
     e.stopPropagation();
     setHistory(prev => prev.filter(h => h.id !== id));
-  }
-
-  function clearHistory() {
-    setHistory([]);
   }
 
   return (
@@ -354,6 +395,7 @@ export default function Home() {
         <Card className="border-border/60 shadow-lg shadow-primary/5">
           <CardContent className="p-5 sm:p-8 space-y-5">
 
+            {/* Upload zone */}
             {uploadState !== 'success' && (
               <div
                 className={`relative rounded-xl border-2 border-dashed transition-colors duration-200 overflow-hidden
@@ -414,27 +456,53 @@ export default function Home() {
               </div>
             )}
 
+            {/* Error state */}
             {uploadState === 'error' && (
-              <div className="flex items-start gap-3 p-3.5 rounded-lg bg-destructive/10 text-destructive" data-testid="alert-error">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium">Extraction failed</p>
+              <div
+                className={`flex items-start gap-3 p-3.5 rounded-lg border ${isDuplicate ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}
+                data-testid="alert-error"
+              >
+                {isDuplicate
+                  ? <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{isDuplicate ? 'Potential Duplicate Detected' : 'Extraction failed'}</p>
                   <p className="text-sm opacity-80 mt-0.5">{errorMsg}</p>
                 </div>
+                {!isDuplicate && selectedFile && (
+                  <button
+                    onClick={handleAnalyze}
+                    className="text-xs font-medium shrink-0 underline underline-offset-2 hover:opacity-70 transition-opacity"
+                    data-testid="button-retry"
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             )}
 
+            {/* Loading skeleton + processing log */}
             {uploadState === 'loading' && (
-              <div className="space-y-3 animate-pulse" data-testid="loading-skeleton">
-                <div className="h-5 bg-muted rounded w-1/3" />
-                <div className="grid grid-cols-2 gap-3">
-                  {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-lg" />)}
+              <div className="space-y-3" data-testid="loading-skeleton">
+                <div className="animate-pulse space-y-3">
+                  <div className="h-5 bg-muted rounded w-1/3" />
+                  <div className="grid grid-cols-2 gap-3">
+                    {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-lg" />)}
+                  </div>
+                  <div className="h-5 bg-muted rounded w-1/4 mt-2" />
+                  <div className="h-32 bg-muted rounded-lg" />
                 </div>
-                <div className="h-5 bg-muted rounded w-1/4 mt-2" />
-                <div className="h-32 bg-muted rounded-lg" />
+                {processingStep && (
+                  <div className="flex items-center justify-center gap-2 pt-1" data-testid="processing-log">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    <p className="text-xs text-muted-foreground transition-all duration-300">{processingStep}</p>
+                  </div>
+                )}
               </div>
             )}
 
+            {/* Results */}
             {uploadState === 'success' && extraction && (
               <ExtractionResults
                 extraction={extraction}
@@ -444,6 +512,7 @@ export default function Home() {
               />
             )}
 
+            {/* Analyze button */}
             {uploadState !== 'success' && (
               <Button
                 className="w-full h-11 text-sm font-semibold shadow-md shadow-primary/20 hover:shadow-primary/30 transition-all"
@@ -451,11 +520,10 @@ export default function Home() {
                 disabled={!selectedFile || uploadState === 'loading'}
                 data-testid="button-analyze"
               >
-                {uploadState === 'loading' ? (
-                  <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Extracting...</>
-                ) : (
-                  'Analyze Receipt'
-                )}
+                {uploadState === 'loading'
+                  ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Extracting...</>
+                  : 'Analyze Receipt'
+                }
               </Button>
             )}
 
@@ -474,14 +542,13 @@ export default function Home() {
                 </span>
               </h3>
               <button
-                onClick={clearHistory}
+                onClick={() => setHistory([])}
                 className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                 data-testid="button-clear-history"
               >
                 Clear all
               </button>
             </div>
-
             <div className="space-y-2">
               {history.map((entry) => (
                 <div
@@ -497,8 +564,8 @@ export default function Home() {
                     <p className="text-sm font-medium text-foreground truncate">
                       {entry.extraction.vendor ?? entry.filename}
                     </p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                      <span>{entry.filename}</span>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="truncate max-w-[120px]">{entry.filename}</span>
                       <span>·</span>
                       <span>{formatRelativeTime(entry.analyzedAt)}</span>
                       {entry.extraction.total !== null && (

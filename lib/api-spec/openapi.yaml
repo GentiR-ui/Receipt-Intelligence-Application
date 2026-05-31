@@ -183,6 +183,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReceiptLineItem"
+        insights:
+          type: array
+          items:
+            type: string
+          description: AI-generated financial insights about this receipt
       required:
         - vendor
         - date
@@ -190,6 +195,7 @@ components:
         - category
         - total
         - items
+        - insights
     ApiError:
       type: object
       properties:

@@ -57,6 +57,8 @@ export interface ReceiptExtraction {
   category: string | null;
   total: number | null;
   items: ReceiptLineItem[];
+  /** AI-generated financial insights about this receipt */
+  insights: string[];
 }
 
 export interface ApiError {

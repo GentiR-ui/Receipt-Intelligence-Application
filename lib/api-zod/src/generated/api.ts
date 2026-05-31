@@ -53,7 +53,8 @@ export const ExtractReceiptResponse = zod.object({
   "name": zod.string().nullable(),
   "quantity": zod.number().nullable(),
   "price": zod.number().nullable()
-}))
+})),
+  "insights": zod.array(zod.string()).describe('AI-generated financial insights about this receipt')
 })
 
 
