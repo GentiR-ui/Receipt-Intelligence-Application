@@ -62,7 +62,7 @@ In PowerShell (from `artifacts/api-server`):
 ```powershell
 cd artifacts/api-server
 $env:PORT = "3001"
-$env:GEMINI_API_KEY- = "Your Gemini API KEY"
+$env:GEMINI_API_KEY = "Your Gemini API KEY"
 pnpm run dev
 ```
 
@@ -112,7 +112,7 @@ The frontend uploads receipt images using `fetch('/api/extract')`, while the bac
 
 ## Prompts Used
 
-### prompti 1
+### prompt 1
 Create a full-stack application called Receipt Intelligence.
 
 Tech Stack:
@@ -134,7 +134,7 @@ Do not implement AI extraction yet.
 Do not add authentication, database, or analytics.
 Keep the code simple and production-ready.
 
-### prompti 2
+### prompt 2
 Implement AI receipt extraction using Google Vertex AI Gemini.
 
 Requirements:
@@ -186,7 +186,7 @@ Keep the implementation simple and production-ready.
 Do not implement CSV export yet.
 Do not implement authentication or database storage
 
-### prompti 3
+### prompt 3
 Implement the CSV export functionality for the receipt results (Bonus Requirement).
 
 Requirements:
@@ -199,7 +199,7 @@ Line items section (Item Name, Quantity, Price).
 Automatically trigger a download of the .csv file to the user's computer.
 Name the file dynamically, for example: receipt-export-<vendor-name>.csv.
 
-### prompti 4
+### prompt 4
 Now let's upgrade the application with professional polish and innovative AI features to make it stand out. Please implement the following 5 features:
 
 1. Data Export Capability: Add an "Export to CSV" button in the success state (using a Download icon) that triggers a browser download of the extracted line items and metadata.
@@ -210,8 +210,31 @@ Now let's upgrade the application with professional polish and innovative AI fea
 
 Ensure the UI remains highly responsive and the drag-and-drop zone works perfectly on mobile devices.
 
-### prompti 5
+### prompt 5
 Please configure the Vite dev server in vite.config.ts so that /api requests are proxied to the local backend at http://127.0.0.1:3001, without committing local .env secrets.
+
+### prompt 6
+
+Now, create a comprehensive and professional README.md for this project to prepare it for submission.
+Requirements:
+1. Project Title & Description: Explain that this is a "Receipt → Spreadsheet" tool using Gemini Vision.
+2. How to Run: Provide exact commands to run the project from a fresh clone (e.g., how to install dependencies, run the frontend and backend, and set up the .env file with the Gemini API key). This must be clear enough that anyone can run it in under 5 minutes.
+3. Architecture: Briefly explain the React + Express stack.
+4. Prompts Used: Create a section that documents the exact prompts used to build this project (I will provide the text for you to insert).
+5. Future Improvements: Add a "What I would do with more time" section mentioning things like database integration, user authentication, and multi-receipt bulk upload.
+Make it look polished with standard markdown formatting.
+
+
+
+### prompt 7
+Please refactor the main React application to implement a professional multi-tab navigation layout (Dashboard, Upload, History, Settings) and a split-screen dashboard view, matching a high-end modern SaaS interface.
+1. Navigation Header (Navbar):
+Create a clean top navigation bar. On the left, place the logo and app name 'Receipt Intelligence'.  On the right, place navigation links/tabs: Dashboard, Upload, History, and Settings.  Manage the active tab using React state (e.g., activeTab).
+2. Dashboard Tab Layout (Split-Screen View):When the active tab is 'Dashboard' (or 'Upload'), wrap the workspace in a responsive Tailwind grid: grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-7xl mx-auto px-4 mt-6.Left Column (lg:col-span-4): Place the dropzone area here. Keep it compact. Below the dropzone, if an image is uploaded, show a clean, high-quality preview thumbnail of the uploaded receipt.  Right Column (lg:col-span-8): Place the Extracted Data card here.  
+3. Component Refactoring within Dashboard:Transform the standard text displays for Vendor, Date, Category, Currency, and Total into clean, interactive input fields (or select dropdowns for category/currency) so the user can edit them. Style them with a subtle border focus (focus:ring-2 focus:ring-blue-500).  Add a badge in the top right corner of the results card that says '✨ Gemini AI'.  Refactor the Line Items table: turn the Item Description, Qty, and Price text into editable inline input fields inside the table rows. Add a table footer with a summary breakdown showing: Subtotal, Tax, and Total.  Add a primary 'Save Changes' action button at the bottom right of the card next to the 'Analyze Another' button. 
+ 4. History Tab Layout:When the user clicks on the 'History' tab, hide the upload workspace and display a full-width section dedicated to tracking past expenses.  Move the existing 'Recent Receipts' list into this tab, but transform it into a more robust data table or grid that lists all previously uploaded receipts, their vendors, dates, categories, totals, and a 'View Details' button.Keep the existing styling tokens (fonts, background colors) intact but tighten up the spacing so components align beautifully without excessive scrolling.
+
+ In this prompt I generated a photo of how it would look better so the prompt is generated from that photo of a layout of the UI/UX.
 
 ## What I would do with more time
 
@@ -233,6 +256,15 @@ $env:PORT = "5173"
 $env:BASE_PATH = "/"
 pnpm run dev
 ```
+Also make sure you have `PORT` and `GEMINI_API_KEY` before runnig the backend:
+
+```powershell
+cd artifacts/api-server
+$env:PORT = "3001"
+$env:GEMINI_API_KEY = "Your Gemini API KEY"
+pnpm run dev
+```
+
 
 ### "GEMINI_API_KEY is not configured"
 
