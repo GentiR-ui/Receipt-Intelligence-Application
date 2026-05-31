@@ -66,6 +66,14 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    proxy: {
+      // Forward frontend /api requests to the local backend during development.
+      "/api": {
+        target: process.env.API_SERVER_URL ?? "http://127.0.0.1:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
     port,
