@@ -5,27 +5,7 @@
  * Receipt Intelligence API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface ReceiptUploadInput {
-  /** Name of the uploaded file */
-  filename: string;
-}
-
-/**
- * Processing status
- */
-export type ReceiptUploadResultStatus = typeof ReceiptUploadResultStatus[keyof typeof ReceiptUploadResultStatus];
-
-
-export const ReceiptUploadResultStatus = {
-  pending: 'pending',
-  processing: 'processing',
-  complete: 'complete',
-  error: 'error',
-} as const;
+import type { ReceiptUploadResultStatus } from './receiptUploadResultStatus';
 
 export interface ReceiptUploadResult {
   /** Unique receipt processing ID */
@@ -41,11 +21,5 @@ export interface ReceiptUploadResult {
   /** Human-readable status message */
   message: string;
   /** ISO timestamp of when the file was uploaded */
-  uploadedAt: string;
+  uploadedAt: Date;
 }
-
-export interface ApiError {
-  /** Error message */
-  error: string;
-}
-

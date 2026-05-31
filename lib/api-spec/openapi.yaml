@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Receipt Intelligence API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: receipts
+    description: Receipt operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /receipts/upload:
+    post:
+      operationId: uploadReceipt
+      tags: [receipts]
+      summary: Upload a receipt image
+      description: Accepts a receipt image file upload and returns a processing result placeholder
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ReceiptUploadInput"
+      responses:
+        "200":
+          description: Receipt uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptUploadResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +66,53 @@ components:
           type: string
       required:
         - status
-
+    ReceiptUploadInput:
+      type: object
+      properties:
+        filename:
+          type: string
+          description: Name of the uploaded file
+      required:
+        - filename
+    ReceiptUploadResult:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique receipt processing ID
+        filename:
+          type: string
+          description: Original filename of the uploaded receipt
+        fileSize:
+          type: integer
+          description: File size in bytes
+        mimeType:
+          type: string
+          description: MIME type of the uploaded file
+        status:
+          type: string
+          enum: [pending, processing, complete, error]
+          description: Processing status
+        message:
+          type: string
+          description: Human-readable status message
+        uploadedAt:
+          type: string
+          format: date-time
+          description: ISO timestamp of when the file was uploaded
+      required:
+        - id
+        - filename
+        - fileSize
+        - mimeType
+        - status
+        - message
+        - uploadedAt
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error

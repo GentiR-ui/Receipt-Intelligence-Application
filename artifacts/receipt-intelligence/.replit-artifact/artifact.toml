@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Receipt Intelligence"
+version = "1.0.0"
+id = "artifacts/receipt-intelligence"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21688
+
+[services.development]
+run = "pnpm --filter @workspace/receipt-intelligence run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/receipt-intelligence", "run", "build" ]
+publicDir = "artifacts/receipt-intelligence/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21688"
+BASE_PATH = "/"
