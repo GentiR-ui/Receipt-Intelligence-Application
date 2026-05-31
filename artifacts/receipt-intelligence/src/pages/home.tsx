@@ -1,5 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
-import { UploadCloud, FileText, AlertCircle, X, Loader2, RotateCcw, Receipt, Tag, Calendar, DollarSign, ShoppingCart, Download } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import {
+  UploadCloud, FileText, AlertCircle, X, Loader2, RotateCcw,
+  Receipt, Tag, Calendar, DollarSign, ShoppingCart, Download,
+  Clock, Trash2, ChevronRight,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -18,8 +22,29 @@ interface ReceiptExtraction {
   items: ReceiptLineItem[];
 }
 
+interface HistoryEntry {
+  id: string;
+  filename: string;
+  analyzedAt: string;
+  extraction: ReceiptExtraction;
+}
+
+const HISTORY_KEY = 'receipt-intelligence:history';
+const MAX_HISTORY = 20;
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_SIZE = 10 * 1024 * 1024;
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
+}
 
 function formatCurrency(amount: number | null, currency: string | null): string {
   if (amount === null) return '—';
@@ -32,6 +57,17 @@ function formatCurrency(amount: number | null, currency: string | null): string 
   } catch {
     return `${currency ?? ''} ${amount.toFixed(2)}`.trim();
   }
+}
+
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 function MetaField({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | null }) {
@@ -48,14 +84,114 @@ function MetaField({ icon: Icon, label, value }: { icon: React.ElementType; labe
   );
 }
 
+function ExtractionResults({
+  extraction,
+  onExportCsv,
+  onNewReceipt,
+  filename,
+}: {
+  extraction: ReceiptExtraction;
+  onExportCsv: () => void;
+  onNewReceipt: () => void;
+  filename?: string;
+}) {
+  return (
+    <div className="space-y-5 animate-in fade-in duration-500" data-testid="extraction-results">
+      {filename && (
+        <p className="text-xs text-muted-foreground text-center">
+          <span className="font-medium text-foreground">{filename}</span>
+        </p>
+      )}
+
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Extracted Data</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <MetaField icon={Receipt} label="Vendor" value={extraction.vendor} />
+          <MetaField icon={Calendar} label="Date" value={extraction.date} />
+          <MetaField icon={Tag} label="Category" value={extraction.category} />
+          <MetaField icon={DollarSign} label="Total" value={formatCurrency(extraction.total, extraction.currency)} />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <ShoppingCart className="w-3.5 h-3.5" />
+          Line Items
+          {extraction.items.length > 0 && (
+            <span className="ml-auto font-normal normal-case text-xs bg-muted px-2 py-0.5 rounded-full">
+              {extraction.items.length} item{extraction.items.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </h3>
+
+        {extraction.items.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
+            No line items found on this receipt.
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border/60 overflow-hidden">
+            <table className="w-full text-sm" data-testid="table-line-items">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border/40">
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Item</th>
+                  <th className="text-center px-3 py-2.5 font-medium text-muted-foreground w-16">Qty</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-muted-foreground w-24">Price</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30">
+                {extraction.items.map((item, i) => (
+                  <tr key={i} className="hover:bg-muted/20 transition-colors" data-testid={`row-item-${i}`}>
+                    <td className="px-4 py-2.5 text-foreground">{item.name ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-muted-foreground">{item.quantity ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-right font-medium text-foreground tabular-nums">
+                      {formatCurrency(item.price, extraction.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {extraction.total !== null && (
+                <tfoot>
+                  <tr className="bg-muted/40 border-t border-border/60">
+                    <td colSpan={2} className="px-4 py-2.5 font-semibold text-foreground">Total</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-foreground tabular-nums">
+                      {formatCurrency(extraction.total, extraction.currency)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap justify-center gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={onExportCsv} data-testid="button-export-csv" className="gap-2">
+          <Download className="w-3.5 h-3.5" />
+          Export to CSV
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onNewReceipt} data-testid="button-new-receipt" className="gap-2">
+          <RotateCcw className="w-3.5 h-3.5" />
+          Analyze Another Receipt
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [uploadState, setUploadState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [extraction, setExtraction] = useState<ReceiptExtraction | null>(null);
+  const [activeFilename, setActiveFilename] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    saveHistory(history);
+  }, [history]);
 
   const applyFile = useCallback((file: File) => {
     if (file.size > MAX_SIZE) {
@@ -86,6 +222,7 @@ export default function Home() {
     setUploadState('idle');
     setErrorMsg(null);
     setExtraction(null);
+    setActiveFilename('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [previewUrl]);
 
@@ -100,40 +237,46 @@ export default function Home() {
     if (e.target.files?.[0]) applyFile(e.target.files[0]);
   }, [applyFile]);
 
-  function exportToCsv() {
-    if (!extraction) return;
-
+  function buildCsv(data: ReceiptExtraction): string {
     const escape = (v: string | number | null) => {
       if (v === null || v === undefined) return '';
       const str = String(v);
       return str.includes(',') || str.includes('"') || str.includes('\n')
-        ? `"${str.replace(/"/g, '""')}"`
-        : str;
+        ? `"${str.replace(/"/g, '""')}"` : str;
     };
-
-    const rows: string[] = [
+    return [
       'Section,Field,Value',
-      `Metadata,Vendor,${escape(extraction.vendor)}`,
-      `Metadata,Date,${escape(extraction.date)}`,
-      `Metadata,Category,${escape(extraction.category)}`,
-      `Metadata,Currency,${escape(extraction.currency)}`,
-      `Metadata,Total,${escape(extraction.total)}`,
+      `Metadata,Vendor,${escape(data.vendor)}`,
+      `Metadata,Date,${escape(data.date)}`,
+      `Metadata,Category,${escape(data.category)}`,
+      `Metadata,Currency,${escape(data.currency)}`,
+      `Metadata,Total,${escape(data.total)}`,
       '',
       'Line Items,Item Name,Quantity,Price',
-      ...extraction.items.map(item =>
+      ...data.items.map(item =>
         `Line Items,${escape(item.name)},${escape(item.quantity)},${escape(item.price)}`
       ),
-    ];
+    ].join('\n');
+  }
 
-    const csv = rows.join('\n');
+  function triggerDownload(csv: string, vendor: string | null) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const vendorSlug = (extraction.vendor ?? 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slug = (vendor ?? 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     a.href = url;
-    a.download = `receipt-export-${vendorSlug}.csv`;
+    a.download = `receipt-export-${slug}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportToCsv() {
+    if (!extraction) return;
+    triggerDownload(buildCsv(extraction), extraction.vendor);
+  }
+
+  function exportHistoryEntry(entry: HistoryEntry) {
+    triggerDownload(buildCsv(entry.extraction), entry.extraction.vendor);
   }
 
   async function handleAnalyze() {
@@ -150,11 +293,37 @@ export default function Home() {
       }
       const data: ReceiptExtraction = await res.json();
       setExtraction(data);
+      setActiveFilename(selectedFile.name);
       setUploadState('success');
+
+      const entry: HistoryEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        filename: selectedFile.name,
+        analyzedAt: new Date().toISOString(),
+        extraction: data,
+      };
+      setHistory(prev => [entry, ...prev]);
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : 'Extraction failed');
       setUploadState('error');
     }
+  }
+
+  function openHistoryEntry(entry: HistoryEntry) {
+    clearAll();
+    setExtraction(entry.extraction);
+    setActiveFilename(entry.filename);
+    setUploadState('success');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function deleteHistoryEntry(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setHistory(prev => prev.filter(h => h.id !== id));
+  }
+
+  function clearHistory() {
+    setHistory([]);
   }
 
   return (
@@ -185,7 +354,6 @@ export default function Home() {
         <Card className="border-border/60 shadow-lg shadow-primary/5">
           <CardContent className="p-5 sm:p-8 space-y-5">
 
-            {/* Upload zone — always visible unless success with no intent to re-upload */}
             {uploadState !== 'success' && (
               <div
                 className={`relative rounded-xl border-2 border-dashed transition-colors duration-200 overflow-hidden
@@ -205,7 +373,6 @@ export default function Home() {
                   disabled={uploadState === 'loading'}
                   data-testid="input-file"
                 />
-
                 {selectedFile ? (
                   <div className="w-full">
                     <div className="px-4 py-3 flex items-center justify-between border-b border-border/40 bg-background/80 backdrop-blur-sm relative z-20">
@@ -247,7 +414,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Error */}
             {uploadState === 'error' && (
               <div className="flex items-start gap-3 p-3.5 rounded-lg bg-destructive/10 text-destructive" data-testid="alert-error">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -258,7 +424,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Loading skeleton */}
             {uploadState === 'loading' && (
               <div className="space-y-3 animate-pulse" data-testid="loading-skeleton">
                 <div className="h-5 bg-muted rounded w-1/3" />
@@ -270,89 +435,15 @@ export default function Home() {
               </div>
             )}
 
-            {/* Results */}
             {uploadState === 'success' && extraction && (
-              <div className="space-y-5 animate-in fade-in duration-500" data-testid="extraction-results">
-                {/* Summary meta fields */}
-                <div>
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Extracted Data</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <MetaField icon={Receipt} label="Vendor" value={extraction.vendor} />
-                    <MetaField icon={Calendar} label="Date" value={extraction.date} />
-                    <MetaField icon={Tag} label="Category" value={extraction.category} />
-                    <MetaField icon={DollarSign} label="Total"
-                      value={formatCurrency(extraction.total, extraction.currency)}
-                    />
-                  </div>
-                </div>
-
-                {/* Line items */}
-                <div>
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                    <ShoppingCart className="w-3.5 h-3.5" />
-                    Line Items
-                    {extraction.items.length > 0 && (
-                      <span className="ml-auto font-normal normal-case text-xs bg-muted px-2 py-0.5 rounded-full">
-                        {extraction.items.length} item{extraction.items.length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </h3>
-
-                  {extraction.items.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
-                      No line items found on this receipt.
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-border/60 overflow-hidden">
-                      <table className="w-full text-sm" data-testid="table-line-items">
-                        <thead>
-                          <tr className="bg-muted/50 border-b border-border/40">
-                            <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Item</th>
-                            <th className="text-center px-3 py-2.5 font-medium text-muted-foreground w-16">Qty</th>
-                            <th className="text-right px-4 py-2.5 font-medium text-muted-foreground w-24">Price</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/30">
-                          {extraction.items.map((item, i) => (
-                            <tr key={i} className="hover:bg-muted/20 transition-colors" data-testid={`row-item-${i}`}>
-                              <td className="px-4 py-2.5 text-foreground">{item.name ?? '—'}</td>
-                              <td className="px-3 py-2.5 text-center text-muted-foreground">{item.quantity ?? '—'}</td>
-                              <td className="px-4 py-2.5 text-right font-medium text-foreground tabular-nums">
-                                {formatCurrency(item.price, extraction.currency)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        {extraction.total !== null && (
-                          <tfoot>
-                            <tr className="bg-muted/40 border-t border-border/60">
-                              <td colSpan={2} className="px-4 py-2.5 font-semibold text-foreground">Total</td>
-                              <td className="px-4 py-2.5 text-right font-bold text-foreground tabular-nums">
-                                {formatCurrency(extraction.total, extraction.currency)}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap justify-center gap-2 pt-1">
-                  <Button variant="outline" size="sm" onClick={exportToCsv} data-testid="button-export-csv" className="gap-2">
-                    <Download className="w-3.5 h-3.5" />
-                    Export to CSV
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={clearAll} data-testid="button-new-receipt" className="gap-2">
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Analyze Another Receipt
-                  </Button>
-                </div>
-              </div>
+              <ExtractionResults
+                extraction={extraction}
+                filename={activeFilename}
+                onExportCsv={exportToCsv}
+                onNewReceipt={clearAll}
+              />
             )}
 
-            {/* Analyze button */}
             {uploadState !== 'success' && (
               <Button
                 className="w-full h-11 text-sm font-semibold shadow-md shadow-primary/20 hover:shadow-primary/30 transition-all"
@@ -370,6 +461,80 @@ export default function Home() {
 
           </CardContent>
         </Card>
+
+        {/* History panel */}
+        {history.length > 0 && (
+          <div className="mt-8" data-testid="history-panel">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                Recent Receipts
+                <span className="text-xs font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                  {history.length}
+                </span>
+              </h3>
+              <button
+                onClick={clearHistory}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                data-testid="button-clear-history"
+              >
+                Clear all
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {history.map((entry) => (
+                <div
+                  key={entry.id}
+                  onClick={() => openHistoryEntry(entry)}
+                  className="group flex items-center gap-3 p-3 rounded-lg border border-border/50 bg-card hover:border-primary/40 hover:bg-muted/30 cursor-pointer transition-all"
+                  data-testid={`history-entry-${entry.id}`}
+                >
+                  <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {entry.extraction.vendor ?? entry.filename}
+                    </p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      <span>{entry.filename}</span>
+                      <span>·</span>
+                      <span>{formatRelativeTime(entry.analyzedAt)}</span>
+                      {entry.extraction.total !== null && (
+                        <>
+                          <span>·</span>
+                          <span className="font-medium text-foreground">
+                            {formatCurrency(entry.extraction.total, entry.extraction.currency)}
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); exportHistoryEntry(entry); }}
+                      className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Export to CSV"
+                      data-testid={`button-export-history-${entry.id}`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => deleteHistoryEntry(entry.id, e)}
+                      className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      title="Delete"
+                      data-testid={`button-delete-history-${entry.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground ml-0.5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
